@@ -36,10 +36,12 @@ process_execute (const char *file_name)
   fn_copy = palloc_get_page (0);
   if (fn_copy == NULL)
     return TID_ERROR;
+  char *realname , *saved;
+  realname = strtok_r(file_name ," ", &saved);
   strlcpy (fn_copy, file_name, PGSIZE);
 
   /* Create a new thread to execute FILE_NAME. */
-  tid = thread_create (file_name, PRI_DEFAULT, start_process, fn_copy);
+  tid = thread_create (realname, PRI_DEFAULT, start_process, fn_copy);
   if (tid == TID_ERROR)
     palloc_free_page (fn_copy); 
   return tid;
@@ -59,8 +61,34 @@ start_process (void *file_name_)
   if_.gs = if_.fs = if_.es = if_.ds = if_.ss = SEL_UDSEG;
   if_.cs = SEL_UCSEG;
   if_.eflags = FLAG_IF | FLAG_MBS;
-  success = load (file_name, &if_.eip, &if_.esp);
+  char *str = NULL;
+  char *saved = NULL;
+  str = strtok_r(file_name," ",&saved);  
+  success = load (str, &if_.eip, &if_.esp);
 
+  char* esp = if_.esp;
+  char* arg[1024];
+  int i=0;
+  for(;str!=NULL;str = strtok_r(NULL," ",&saved)){
+      esp -= strlen(str)+1;
+      arg[i++] = esp;
+      strlcpy(esp,str,strlen(str)+1);
+  }
+  while((int)esp % 4 != 0){
+    esp--;
+  }
+  esp = esp -4;
+  (*(int*)esp)  = 0;
+  int *p=esp;
+  int argc = i;
+  i--;
+  while(i>=0)
+    *p--=(int *)arg[i--];
+  *p--=p+1;
+  *p--=argc;
+  *p--=0;
+  esp = p +1;
+  if_.esp = esp;
   /* If load failed, quit. */
   palloc_free_page (file_name);
   if (!success) 
